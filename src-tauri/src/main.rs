@@ -41,7 +41,7 @@ struct WorkoutStatus {
 
 #[tauri::command]
 async fn open_node(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    trace!("acquiring lock");
+    debug!("opening node");
     let mut node = state.node.lock().unwrap();
 
     if let Some(_) = *node {
@@ -66,7 +66,7 @@ async fn open_node(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_hrm(state: State<'_, Arc<AppState>>, window: Window) -> Result<(), String> {
-    trace!("opening heart rate monitor");
+    debug!("opening heart rate monitor");
 
     let mut node = state.node.lock().unwrap();
 
@@ -110,7 +110,7 @@ async fn open_fitness_equipment(
     state: State<'_, Arc<AppState>>,
     window: Window,
 ) -> Result<(), String> {
-    trace!("opening heart rate monitor");
+    debug!("opening fitness equipment");
 
     let mut node = state.node.lock().unwrap();
 
@@ -256,7 +256,7 @@ async fn start_workout(state: State<'_, Arc<AppState>>, window: Window) -> Resul
 fn main() {
     env_logger::builder()
         .format_timestamp_millis()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(log::LevelFilter::Debug)
         .filter(Some("tao"), log::LevelFilter::Warn)
         .target(env_logger::Target::Stdout)
         .init();
@@ -292,7 +292,7 @@ fn main() {
 
     app.run(move |_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
-            println!("cleaning up");
+            trace!("cleaning up");
             let mut node = state.node.lock().unwrap();
             if let Some(ref mut node) = *node {
                 if let Err(e) = node.close() {
