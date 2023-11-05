@@ -5,6 +5,7 @@
     "plugin:@typescript-eslint/recommended",
     "prettier"
   ],
+  "ignorePatterns": ["src/types/*.ts", "dist/", "src-tauri/target"],
   "rules": {
     "prettier/prettier": "error"
   }

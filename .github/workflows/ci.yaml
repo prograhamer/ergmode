@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.10.0
+
+      - name: Sync node version and setup cache
+        uses: actions/setup-node@v3
+        with:
+          node-version: "lts/*"
+          cache: "pnpm" # Set this to npm, yarn or pnpm.
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev librsvg2-dev
+
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      # Run tests and ensure no changes are present due to regeneration of ts_rs exported types
+      - name: Run tests
+        run: cargo test --verbose && git diff --quiet
+        working-directory: ./src-tauri
+
+      - name: Run clippy
+        run: cargo clippy -- -Dwarnings
+        working-directory: ./src-tauri
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Run eslint
+        run: pnpm exec eslint .
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0

@@ -202,7 +202,7 @@ async fn start_workout(state: State<'_, Arc<AppState>>, window: Window) -> Resul
     loop {
         let mut step_elapsed = (step_start.elapsed() * 1).as_secs();
 
-        let step_changed = if step_elapsed >= wko.steps[step_index].duration.into() {
+        let step_changed = if step_elapsed >= Into::<u64>::into(wko.steps[step_index].duration) {
             if wko.steps.len() > step_index + 1 {
                 step_index += 1;
                 step_start = std::time::Instant::now();
