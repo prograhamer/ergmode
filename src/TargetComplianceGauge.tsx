@@ -14,9 +14,11 @@ const useStyles = createUseStyles({
 });
 
 function TargetComplianceGauge({
+  metricName,
   target,
   value,
 }: {
+  metricName: string;
   target: { minimum: number; maximum: number };
   value: number | null;
 }) {
@@ -47,7 +49,7 @@ function TargetComplianceGauge({
 
   return (
     <div className={classes.container}>
-      <div className={classes.title}>Target: Power</div>
+      <div className={classes.title}>Target: {metricName}</div>
       <svg height={height} width={width}>
         <defs>
           <linearGradient id="compliance-gradient">

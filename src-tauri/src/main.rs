@@ -153,8 +153,8 @@ async fn open_fitness_equipment(
 }
 
 #[tauri::command]
-async fn load_workout(state: State<'_, Arc<AppState>>) -> Result<Workout, String> {
-    let wko = workout::load_workout()?;
+async fn load_workout(state: State<'_, Arc<AppState>>, data: String) -> Result<Workout, String> {
+    let wko = workout::from_data_url(data)?;
 
     {
         let mut state_wko = state.workout.lock().unwrap();

@@ -700,6 +700,7 @@ name = "ergmode"
 version = "0.0.0"
 dependencies = [
  "antrs",
+ "base64 0.21.5",
  "env_logger",
  "fit_file",
  "log",
@@ -710,6 +711,7 @@ dependencies = [
  "tauri-build",
  "toml 0.8.6",
  "ts-rs",
+ "url",
 ]
 
 [[package]]

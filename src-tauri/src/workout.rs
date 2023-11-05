@@ -1,22 +1,24 @@
 use std::collections::HashMap;
-use std::fs::File;
 use std::io::BufReader;
 
+use base64::{engine::general_purpose, Engine as _};
 use fit_file::fit_file;
 use ts_rs::TS;
+use url::Url;
 
-#[derive(Clone, serde::Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, TS)]
 #[ts(export, export_to = "../src/types/Workout.ts")]
 pub struct Workout {
     pub title: String,
     pub steps: Vec<WorkoutStep>,
 }
 
-#[derive(Clone, serde::Serialize, TS)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, TS)]
 #[ts(export, export_to = "../src/types/WorkoutStep.ts")]
 pub struct WorkoutStep {
     pub set_point: u32,
-    pub target_range: (u32, u32),
+    pub target_power: (u32, u32),
+    pub target_cadence: Option<(u32, u32)>,
     pub duration: u32,
 }
 
@@ -55,38 +57,83 @@ fn fit_message_callback(
 
         if let Some(duration_type) = step.duration_type {
             if duration_type == fit_file::WORKOUT_STEP_DURATION_TIME {
-                let (low, high) = if step.target_type == Some(fit_file::WORKOUT_STEP_TARGET_POWER) {
-                    if step.target_value == Some(0) {
-                        if let Some(target_low) = step.custom_target_low {
-                            if let Some(target_high) = step.custom_target_high {
-                                if target_low >= 1000 && target_high > 1000 {
-                                    (target_low - 1000, target_high - 1000)
-                                } else {
-                                    data.error = Some("power based on FTP not supported".into());
-                                    return;
-                                }
+                let target_power = if step.target_type == Some(fit_file::WORKOUT_STEP_TARGET_POWER)
+                {
+                    match target_from_fields(
+                        step.target_value,
+                        step.custom_target_low,
+                        step.custom_target_high,
+                    ) {
+                        Ok(v) => {
+                            if v.0 >= 1000 && v.1 >= 1000 {
+                                Some((v.0 - 1000, v.1 - 1000))
                             } else {
-                                data.error = Some("custom_target_high missing".into());
+                                data.error = Some("power based on FTP % not supported".into());
                                 return;
                             }
-                        } else {
-                            data.error = Some("custom_target_low missing".into());
+                        }
+                        Err(e) => {
+                            data.error = Some(e);
                             return;
                         }
-                    } else {
-                        data.error = Some("power zones not supported".into());
-                        return;
+                    }
+                } else if step.secondary_target_type == Some(fit_file::WORKOUT_STEP_TARGET_POWER) {
+                    match target_from_fields(
+                        step.secondary_target_value,
+                        step.secondary_custom_target_low,
+                        step.secondary_custom_target_high,
+                    ) {
+                        Ok(v) => {
+                            if v.0 >= 1000 && v.1 >= 1000 {
+                                Some((v.0 - 1000, v.1 - 1000))
+                            } else {
+                                data.error = Some("power based on FTP % not supported".into());
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            data.error = Some(e);
+                            return;
+                        }
                     }
                 } else {
-                    data.error = Some("unsupported target type".into());
+                    None
+                };
+
+                let target_power = if let Some(target_power) = target_power {
+                    target_power
+                } else {
+                    data.error = Some("no power target".into());
                     return;
+                };
+
+                let target_cadence = if step.target_type
+                    == Some(fit_file::WORKOUT_STEP_TARGET_CADENCE)
+                {
+                    target_from_fields(
+                        step.target_value,
+                        step.custom_target_low,
+                        step.custom_target_high,
+                    )
+                    .ok()
+                } else if step.secondary_target_type == Some(fit_file::WORKOUT_STEP_TARGET_CADENCE)
+                {
+                    target_from_fields(
+                        step.secondary_target_value,
+                        step.secondary_custom_target_low,
+                        step.secondary_custom_target_high,
+                    )
+                    .ok()
+                } else {
+                    None
                 };
 
                 if let Some(duration) = step.duration_value {
                     let duration = duration / 1000;
                     let workout_step = WorkoutStep {
-                        set_point: ((low + high) / 2),
-                        target_range: (low, high),
+                        set_point: ((target_power.0 + target_power.1) / 2),
+                        target_cadence,
+                        target_power,
                         duration,
                     };
 
@@ -153,7 +200,51 @@ fn fit_message_callback(
     }
 }
 
-pub fn load_workout() -> Result<Workout, String> {
+fn target_from_fields(
+    target_value: Option<u32>,
+    custom_target_low: Option<u32>,
+    custom_target_high: Option<u32>,
+) -> Result<(u32, u32), String> {
+    if target_value == Some(0) {
+        if let Some(target_low) = custom_target_low {
+            if let Some(target_high) = custom_target_high {
+                Ok((target_low, target_high))
+            } else {
+                Err("custom_target_high missing".into())
+            }
+        } else {
+            Err("custom_target_low missing".into())
+        }
+    } else {
+        Err("zones not supported".into())
+    }
+}
+
+pub fn from_data_url(url: String) -> Result<Workout, String> {
+    let url = Url::parse(&url).map_err(|e| format!("parse URL: {}", e))?;
+
+    if url.scheme() != "data"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !url.cannot_be_a_base()
+    {
+        return Err("invalid data URL".into());
+    }
+
+    let parts = url.path().split(',').collect::<Vec<_>>();
+
+    if parts.len() != 2 || parts[0] != "application/octet-stream;base64" {
+        return Err("invalid data URL".into());
+    }
+
+    let data = general_purpose::STANDARD
+        .decode(parts[1])
+        .map_err(|e| format!("decode base64: {}", e))?;
+
+    load_workout(&*data)
+}
+
+pub fn load_workout(data: impl std::io::Read) -> Result<Workout, String> {
     let mut constructor = WorkoutConstructor {
         workout: None,
         error: None,
@@ -161,9 +252,7 @@ pub fn load_workout() -> Result<Workout, String> {
         step_indices: HashMap::new(),
     };
 
-    let file = File::open("/Users/graham/Code/fitparse/2023-11-07_VO2max-Int.fit")
-        .map_err(|e| format!("opening file: {}", e))?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(data);
 
     fit_file::read(&mut reader, fit_message_callback, &mut constructor)
         .map_err(|e| format!("reading fit file: {}", e))?;
@@ -178,46 +267,135 @@ pub fn load_workout() -> Result<Workout, String> {
             }
         }
     }
+}
 
-    //     Ok(Workout {
-    //         title: "Test Workout #1".to_string().into(),
-    //         steps: vec![
-    //             WorkoutStep {
-    //                 power: 120,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 130,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 140,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 150,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 160,
-    //                 duration: 60 * 22,
-    //             },
-    //             WorkoutStep {
-    //                 power: 150,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 140,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 130,
-    //                 duration: 60,
-    //             },
-    //             WorkoutStep {
-    //                 power: 120,
-    //                 duration: 60,
-    //             },
-    //         ],
-    //     })
+#[cfg(test)]
+mod test {
+    use crate::workout::{self, WorkoutStep};
+    use std::fs::File;
+    use std::io::BufReader;
+
+    #[test]
+    fn it_loads_workout_with_power_and_cadence_targets() {
+        let file = File::open("./tests/fixtures/power_and_cadence.fit").expect("file loads");
+        let mut reader = BufReader::new(file);
+        let wko = workout::load_workout(&mut reader).expect("workout loads");
+
+        assert_eq!(
+            wko,
+            workout::Workout {
+                title: "Threshold 4x 8\"".into(),
+                steps: vec![
+                    WorkoutStep {
+                        duration: 480,
+                        set_point: 112,
+                        target_cadence: None,
+                        target_power: (100, 125),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((85, 95)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((95, 105)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((105, 115)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((115, 125)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((105, 115)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((95, 105)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 60,
+                        set_point: 137,
+                        target_cadence: Some((85, 95)),
+                        target_power: (125, 150),
+                    },
+                    WorkoutStep {
+                        duration: 300,
+                        set_point: 112,
+                        target_cadence: None,
+                        target_power: (100, 125),
+                    },
+                    WorkoutStep {
+                        duration: 480,
+                        set_point: 244,
+                        target_cadence: None,
+                        target_power: (238, 250),
+                    },
+                    WorkoutStep {
+                        set_point: 125,
+                        target_power: (112, 138),
+                        target_cadence: None,
+                        duration: 120
+                    },
+                    WorkoutStep {
+                        duration: 480,
+                        set_point: 244,
+                        target_cadence: None,
+                        target_power: (238, 250),
+                    },
+                    WorkoutStep {
+                        set_point: 125,
+                        target_power: (112, 138),
+                        target_cadence: None,
+                        duration: 120
+                    },
+                    WorkoutStep {
+                        duration: 480,
+                        set_point: 244,
+                        target_cadence: None,
+                        target_power: (238, 250),
+                    },
+                    WorkoutStep {
+                        set_point: 125,
+                        target_power: (112, 138),
+                        target_cadence: None,
+                        duration: 120
+                    },
+                    WorkoutStep {
+                        duration: 480,
+                        set_point: 244,
+                        target_cadence: None,
+                        target_power: (238, 250),
+                    },
+                    WorkoutStep {
+                        set_point: 125,
+                        target_power: (112, 138),
+                        target_cadence: None,
+                        duration: 120
+                    },
+                    WorkoutStep {
+                        set_point: 112,
+                        target_power: (100, 125),
+                        target_cadence: None,
+                        duration: 600
+                    },
+                ],
+            }
+        );
+    }
 }

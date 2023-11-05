@@ -23,6 +23,8 @@ fit_file = { git = "https://github.com/prograhamer/rust_fit_file", version = "0.
 nosleep = "0.2.1"
 toml = "0.8.6"
 ts-rs = "7.0.0"
+url = "2.4.1"
+base64 = "0.21.5"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

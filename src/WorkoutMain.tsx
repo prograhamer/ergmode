@@ -49,7 +49,6 @@ function WorkoutMain({ workout }: { workout: Workout }) {
     const cleanup = listen(
       "workout_status",
       (event: TauriEvent<WorkoutStatus>) => {
-        console.log("workout_status", "event", event);
         setStepIndex(event.payload.step_index);
         setStepElapsed(event.payload.step_elapsed);
       },
@@ -64,7 +63,6 @@ function WorkoutMain({ workout }: { workout: Workout }) {
     const cleanup = listen(
       "heart_rate",
       (event: TauriEvent<HeartRateUpdate>) => {
-        console.log("heart_rate", "event", event);
         setHeartRate(event.payload.value);
       },
     );
@@ -78,7 +76,6 @@ function WorkoutMain({ workout }: { workout: Workout }) {
     const cleanup = listen(
       "fitness_equipment_data",
       (event: TauriEvent<FitnessEquipmentUpdate>) => {
-        console.log("fitness_equipment_data", "event", event);
         setCadence(event.payload.cadence);
         setPower(event.payload.power);
       },
@@ -125,12 +122,23 @@ function WorkoutMain({ workout }: { workout: Workout }) {
         </div>
         <div className={classes.row}>
           <TargetComplianceGauge
+            metricName="Power"
             target={{
-              minimum: step.target_range[0],
-              maximum: step.target_range[1],
+              minimum: step.target_power[0],
+              maximum: step.target_power[1],
             }}
             value={power}
           />
+          {step.target_cadence && (
+            <TargetComplianceGauge
+              metricName="Cadence"
+              target={{
+                minimum: step.target_cadence[0],
+                maximum: step.target_cadence[1],
+              }}
+              value={cadence}
+            />
+          )}
         </div>
       </div>
       <WorkoutGraph

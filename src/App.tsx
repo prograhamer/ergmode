@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, ChangeEvent } from "react";
 
 import { createUseStyles } from "react-jss";
 
@@ -32,13 +32,23 @@ function App() {
     }
   };
 
-  const loadWorkout = async () => {
-    try {
-      setWorkout(await invoke("load_workout"));
-    } catch (error) {
-      if (typeof error === "string") {
-        setError(error);
-      }
+  const loadWorkout = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length === 1) {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        if (evt.target && evt.target.result) {
+          try {
+            setWorkout(
+              await invoke("load_workout", { data: evt.target.result }),
+            );
+          } catch (error) {
+            if (typeof error === "string") {
+              setError(error);
+            }
+          }
+        }
+      };
+      reader.readAsDataURL(event.target.files[0]);
     }
   };
 
@@ -48,7 +58,7 @@ function App() {
       {workout === null ? (
         <>
           <button onClick={setup}>SET IT UP</button>
-          <button onClick={loadWorkout}>Load Workout</button>
+          <input type="file" accept=".fit" onChange={loadWorkout} />
         </>
       ) : (
         <WorkoutMain workout={workout} />
