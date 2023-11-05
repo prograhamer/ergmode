@@ -10,6 +10,12 @@ import Duration from "./Duration";
 import TargetComplianceGauge from "./TargetComplianceGauge";
 import WorkoutGraph from "./WorkoutGraph";
 
+import { Workout } from "./types/Workout";
+import { FitnessEquipmentUpdate } from "./types/FitnessEquipmentUpdate";
+import { HeartRateUpdate } from "./types/HeartRateUpdate";
+import { WorkoutStatus } from "./types/WorkoutStatus";
+import { TauriEvent } from "./types";
+
 const useStyles = createUseStyles({
   container: {
     display: "flex",
@@ -29,22 +35,25 @@ const useStyles = createUseStyles({
   },
 });
 
-function WorkoutMain({ workout }) {
+function WorkoutMain({ workout }: { workout: Workout }) {
   const classes = useStyles();
 
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<null | string>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [stepElapsed, setStepElapsed] = useState(0);
-  const [heartRate, setHeartRate] = useState(null);
-  const [cadence, setCadence] = useState(null);
-  const [power, setPower] = useState(null);
+  const [heartRate, setHeartRate] = useState<null | number>(null);
+  const [cadence, setCadence] = useState<null | number>(null);
+  const [power, setPower] = useState<null | number>(null);
 
   useEffect(() => {
-    const cleanup = listen("workout_status", (event) => {
-      console.log("workout_status", "event", event);
-      setStepIndex(event.payload.step_index);
-      setStepElapsed(event.payload.step_elapsed);
-    });
+    const cleanup = listen(
+      "workout_status",
+      (event: TauriEvent<WorkoutStatus>) => {
+        console.log("workout_status", "event", event);
+        setStepIndex(event.payload.step_index);
+        setStepElapsed(event.payload.step_elapsed);
+      },
+    );
 
     return () => {
       cleanup.then((f) => f());
@@ -52,10 +61,13 @@ function WorkoutMain({ workout }) {
   }, []);
 
   useEffect(() => {
-    const cleanup = listen("heart_rate", (event) => {
-      console.log("heart_rate", "event", event);
-      setHeartRate(event.payload.value);
-    });
+    const cleanup = listen(
+      "heart_rate",
+      (event: TauriEvent<HeartRateUpdate>) => {
+        console.log("heart_rate", "event", event);
+        setHeartRate(event.payload.value);
+      },
+    );
 
     return () => {
       cleanup.then((f) => f());
@@ -63,11 +75,14 @@ function WorkoutMain({ workout }) {
   }, []);
 
   useEffect(() => {
-    const cleanup = listen("fitness_equipment_data", (event) => {
-      console.log("fitness_equipment_data", "event", event);
-      setCadence(event.payload.cadence);
-      setPower(event.payload.power);
-    });
+    const cleanup = listen(
+      "fitness_equipment_data",
+      (event: TauriEvent<FitnessEquipmentUpdate>) => {
+        console.log("fitness_equipment_data", "event", event);
+        setCadence(event.payload.cadence);
+        setPower(event.payload.power);
+      },
+    );
 
     return () => {
       cleanup.then((f) => f());
@@ -78,7 +93,9 @@ function WorkoutMain({ workout }) {
     try {
       await invoke("start_workout");
     } catch (error) {
-      setError(error);
+      if (typeof error === "string") {
+        setError(error);
+      }
     }
   };
   const step = workout.steps[stepIndex];

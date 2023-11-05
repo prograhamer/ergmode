@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { createUseStyles } from "react-jss";
 
 import { invoke } from "@tauri-apps/api/tauri";
-import { listen } from "@tauri-apps/api/event";
 
 import WorkoutMain from "./WorkoutMain";
 
@@ -27,7 +26,9 @@ function App() {
       await invoke("open_hrm");
       await invoke("open_fitness_equipment");
     } catch (error) {
-      setError(error);
+      if (typeof error === "string") {
+        setError(error);
+      }
     }
   };
 
@@ -35,7 +36,9 @@ function App() {
     try {
       setWorkout(await invoke("load_workout"));
     } catch (error) {
-      setError(error);
+      if (typeof error === "string") {
+        setError(error);
+      }
     }
   };
 

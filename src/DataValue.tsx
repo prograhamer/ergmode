@@ -21,7 +21,17 @@ const useStyles = createUseStyles({
   },
 });
 
-function DataValue({ icon, title, unit, value }) {
+function DataValue({
+  icon,
+  title,
+  unit,
+  value,
+}: {
+  icon?: string;
+  title: string;
+  unit?: string;
+  value: null | number | string;
+}) {
   const classes = useStyles();
 
   return (
@@ -30,7 +40,7 @@ function DataValue({ icon, title, unit, value }) {
       <div className={classes.value}>
         {icon && <span className={classes.icon}>{icon}</span>}
         {value !== null ? value : "NO DATA"}
-        {value && <span className={classes.unit}>{unit}</span>}
+        {value && unit && <span className={classes.unit}>{unit}</span>}
       </div>
     </div>
   );

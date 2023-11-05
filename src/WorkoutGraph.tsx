@@ -2,7 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 
 import * as d3 from "d3";
 
-function WorkoutGraph({ workout, stepIndex, stepElapsed }) {
+import { Workout } from "./types/Workout";
+
+function WorkoutGraph({
+  workout,
+  stepIndex,
+  stepElapsed,
+}: {
+  workout: Workout;
+  stepIndex: number;
+  stepElapsed: number;
+}) {
   const [dimensions, setDimensions] = useState({
     height: window.innerHeight,
     width: window.innerWidth,
@@ -20,9 +30,9 @@ function WorkoutGraph({ workout, stepIndex, stepElapsed }) {
   }, []);
 
   const data = useMemo(() => {
-    let data = [];
+    const data = [];
     let previous_end = 0;
-    for (let step of workout.steps) {
+    for (const step of workout.steps) {
       data.push({
         x: previous_end,
         width: step.duration,

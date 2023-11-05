@@ -13,20 +13,27 @@ const useStyles = createUseStyles({
   },
 });
 
-function TargetComplianceGauge({ target, value }) {
+function TargetComplianceGauge({
+  target,
+  value,
+}: {
+  target: { minimum: number; maximum: number };
+  value: number | null;
+}) {
   const classes = useStyles();
 
   const inTargetRange = target.maximum - target.minimum;
   const targetMidpoint = (target.maximum + target.minimum) / 2;
-  let displayRange = inTargetRange * 2;
-  let displayMinimum = targetMidpoint - displayRange / 2;
-  let displayMaximum = targetMidpoint + displayRange / 2;
+  const displayRange = inTargetRange * 2;
+  const displayMinimum = targetMidpoint - displayRange / 2;
+  const displayMaximum = targetMidpoint + displayRange / 2;
 
-  let displayValue = Math.max(Math.min(displayMaximum, value), displayMinimum);
+  const displayValue = Math.max(
+    Math.min(displayMaximum, value || 0),
+    displayMinimum,
+  );
 
-  const marginTop = 8;
   const marginRight = 8;
-  const marginBottom = 8;
   const marginLeft = 8;
   const width = 800;
   const height = 140;

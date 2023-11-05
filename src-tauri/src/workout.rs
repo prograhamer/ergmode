@@ -3,14 +3,17 @@ use std::fs::File;
 use std::io::BufReader;
 
 use fit_file::fit_file;
+use ts_rs::TS;
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../src/types/Workout.ts")]
 pub struct Workout {
     pub title: String,
     pub steps: Vec<WorkoutStep>,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../src/types/WorkoutStep.ts")]
 pub struct WorkoutStep {
     pub set_point: u32,
     pub target_range: (u32, u32),
@@ -33,7 +36,7 @@ fn fit_message_callback(
     data: &mut WorkoutConstructor,
 ) {
     // stop processing after first error
-    if let Some(_) = data.error {
+    if data.error.is_some() {
         return;
     }
 

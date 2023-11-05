@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use tauri::{State, Window};
+use ts_rs::TS;
 use workout::Workout;
 
 struct AppState {
@@ -21,22 +22,25 @@ struct AppState {
     workout: Mutex<Option<Workout>>,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../src/types/HeartRateUpdate.ts")]
 struct HeartRateUpdate {
     value: u8,
     timestamp: u128,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../src/types/FitnessEquipmentUpdate.ts")]
 struct FitnessEquipmentUpdate {
     cadence: Option<u8>,
     power: Option<u16>,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, TS)]
+#[ts(export, export_to = "../src/types/WorkoutStatus.ts")]
 struct WorkoutStatus {
     step_index: usize,
-    step_elapsed: u64,
+    step_elapsed: u32,
 }
 
 #[tauri::command]
@@ -44,7 +48,7 @@ async fn open_node(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     debug!("opening node");
     let mut node = state.node.lock().unwrap();
 
-    if let Some(_) = *node {
+    if node.is_some() {
         return Ok(());
     }
 
@@ -242,7 +246,7 @@ async fn start_workout(state: State<'_, Arc<AppState>>, window: Window) -> Resul
                 "workout_status",
                 WorkoutStatus {
                     step_index,
-                    step_elapsed,
+                    step_elapsed: step_elapsed as u32,
                 },
             )
             .map_err(|e| format!("emit workout_status: {}", e))?;
@@ -290,8 +294,8 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(move |_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+    app.run(move |_handle, event| {
+        if let tauri::RunEvent::Exit = event {
             trace!("cleaning up");
             let mut node = state.node.lock().unwrap();
             if let Some(ref mut node) = *node {
@@ -300,6 +304,5 @@ fn main() {
                 }
             }
         }
-        _ => {}
     });
 }

@@ -4,11 +4,11 @@ pub struct DevicePairing {
     pub transmission_type: u8,
 }
 
-impl Into<antrs::device::DevicePairing> for DevicePairing {
-    fn into(self) -> antrs::device::DevicePairing {
-        antrs::device::DevicePairing {
-            device_id: self.device_id,
-            transmission_type: self.transmission_type,
+impl From<DevicePairing> for antrs::device::DevicePairing {
+    fn from(value: DevicePairing) -> Self {
+        Self {
+            device_id: value.device_id,
+            transmission_type: value.transmission_type,
         }
     }
 }

@@ -1,6 +1,6 @@
 import DataValue from "./DataValue";
 
-function Duration({ seconds, title }) {
+function Duration({ seconds, title }: { seconds: number; title: string }) {
   const minutes = Math.floor((seconds % 3600) / 60);
   const displaySeconds = seconds % 60;
   const formatted =
