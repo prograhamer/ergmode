@@ -14,6 +14,8 @@ use tauri::{State, Window};
 use ts_rs::TS;
 use workout::Workout;
 
+include!(concat!(env!("OUT_DIR"), "/ant_network_key.rs"));
+
 struct AppState {
     config: config::AppConfig,
     node: Mutex<Option<node::Node>>,
@@ -52,7 +54,7 @@ async fn open_node(state: State<'_, Arc<AppState>>) -> Result<(), String> {
         return Ok(());
     }
 
-    let nb = antrs::node::NodeBuilder::new(state.config.network_key);
+    let nb = antrs::node::NodeBuilder::new(ANT_NETWORK_KEY);
     let mut created = nb.build();
 
     match created.open() {

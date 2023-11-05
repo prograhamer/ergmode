@@ -2,8 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - "v*"
 
 jobs:
   release:
@@ -31,25 +30,29 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: "./src-tauri -> target"
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.10.0
 
       - name: Sync node version and setup cache
         uses: actions/setup-node@v3
         with:
-          node-version: 'lts/*'
-          cache: 'pnpm' # Set this to npm, yarn or pnpm.
+          node-version: "lts/*"
+          cache: "pnpm" # Set this to npm, yarn or pnpm.
 
       - name: Install frontend dependencies
         run: pnpm install
 
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
-
         env:
+          ANT_NETWORK_KEY: ${{ secrets.ANT_NETWORK_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }} # This only works if your workflow triggers on new tags.
-          releaseName: 'App Name v__VERSION__' # tauri-action replaces \_\_VERSION\_\_ with the app version.
-          releaseBody: 'See the assets to download and install this version.'
+          tagName: ${{ github.ref_name }}
+          releaseName: "ergmode ${{ github.ref_name }}"
+          releaseBody: "See the assets to download and install this version."
           releaseDraft: true
           prerelease: false

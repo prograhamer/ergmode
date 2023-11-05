@@ -703,6 +703,7 @@ dependencies = [
  "base64 0.21.5",
  "env_logger",
  "fit_file",
+ "hex",
  "log",
  "nosleep",
  "serde",

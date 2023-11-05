@@ -21,6 +21,5 @@ pub struct Pairings {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct AppConfig {
-    pub network_key: [u8; 8],
     pub devices: Pairings,
 }
