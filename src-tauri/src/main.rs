@@ -2,26 +2,35 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod executor;
 mod workout;
 
 use antrs::node;
 use antrs::profile::{fitness_equipment, heart_rate_monitor};
-use log::{debug, error, trace};
+use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
+use std::time::Duration;
 use tauri::{State, Window};
 use ts_rs::TS;
 use workout::Workout;
 
 include!(concat!(env!("OUT_DIR"), "/ant_network_key.rs"));
 
+#[derive(Clone)]
+pub struct FitnessEquipmentState {
+    pub channel: u8,
+    pub receiver: crossbeam_channel::Receiver<fitness_equipment::CommandStatusData>,
+}
+
 struct AppState {
     config: config::AppConfig,
-    node: Mutex<Option<node::Node>>,
+    node: Arc<Mutex<Option<node::Node>>>,
     hrm_channel: RwLock<Option<u8>>,
-    fe_channel: RwLock<Option<u8>>,
+    fe_state: RwLock<Option<FitnessEquipmentState>>,
     workout: Mutex<Option<Workout>>,
+    workout_status: Arc<Mutex<Option<executor::WorkoutStatus>>>,
 }
 
 #[derive(Clone, serde::Serialize, TS)]
@@ -38,49 +47,54 @@ struct FitnessEquipmentUpdate {
     power: Option<u16>,
 }
 
-#[derive(Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../src/types/WorkoutStatus.ts")]
-struct WorkoutStatus {
-    step_index: usize,
-    step_elapsed: u32,
-}
-
 #[tauri::command]
-async fn open_node(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    debug!("opening node");
-    let mut node = state.node.lock().unwrap();
+fn open_node(state: State<'_, Arc<AppState>>, window: Window) {
+    let state = Arc::clone(&state);
 
-    if node.is_some() {
-        return Ok(());
-    }
+    std::thread::spawn(move || {
+        debug!("opening node");
+        let mut node = state.node.lock().unwrap();
 
-    let nb = antrs::node::NodeBuilder::new(ANT_NETWORK_KEY);
-    let mut created = nb.build();
+        while node.is_none() {
+            let nb = antrs::node::NodeBuilder::new(ANT_NETWORK_KEY);
+            let mut created = nb.build();
 
-    match created.open() {
-        Ok(_) => trace!("node opened successfully!"),
-        Err(e) => {
-            error!("failed to open node: {}", e);
-            return Err(format!("failed to open node: {}", e));
+            match created.open() {
+                Ok(_) => {
+                    trace!("node opened successfully!");
+                    *node = Some(created);
+                }
+                Err(e) => {
+                    warn!("failed to open node: {}", e);
+                }
+            }
+
+            std::thread::sleep(Duration::from_secs(5));
         }
-    }
 
-    *node = Some(created);
-
-    Ok(())
+        if let Err(e) = window.emit("node_connected", true) {
+            error!("failed to emit node_connected: {}", e);
+        }
+    });
 }
 
 #[tauri::command]
 async fn open_hrm(state: State<'_, Arc<AppState>>, window: Window) -> Result<(), String> {
     debug!("opening heart rate monitor");
 
-    let mut node = state.node.lock().unwrap();
+    let mut nd = state.node.lock().unwrap();
 
-    if let Some(ref mut node) = *node {
+    if let Some(ref mut nd) = *nd {
         let (hrm, receiver) =
             heart_rate_monitor::new_paired(state.config.devices.heart_rate_monitor.into());
-        let channel = node
-            .assign_channel(Box::new(hrm))
+        let channel = nd
+            .assign_channel(
+                Box::new(hrm),
+                Some(node::ChannelOptions {
+                    low_priority_search_timeout: Some(255),
+                    search_timeout: Some(0),
+                }),
+            )
             .map_err(|e| format!("assigning channel: {}", e))?;
 
         std::thread::spawn(move || {
@@ -124,29 +138,47 @@ async fn open_fitness_equipment(
         let (fe, receiver) =
             fitness_equipment::new_paired(state.config.devices.fitness_equipment.into());
         let channel = node
-            .assign_channel(Box::new(fe))
+            .assign_channel(
+                Box::new(fe),
+                Some(node::ChannelOptions {
+                    low_priority_search_timeout: Some(255),
+                    search_timeout: Some(0),
+                }),
+            )
             .map_err(|e| format!("assigning channel: {}", e))?;
+
+        let (s, r) = crossbeam_channel::unbounded();
+
+        {
+            let mut fe_state = state.fe_state.write().unwrap();
+            *fe_state = Some(FitnessEquipmentState {
+                channel,
+                receiver: r,
+            });
+        }
 
         std::thread::spawn(move || {
             for message in receiver.iter() {
-                if let fitness_equipment::FitnessEquipmentData::StationaryBike(data) = message {
-                    window
-                        .emit(
-                            "fitness_equipment_data",
-                            FitnessEquipmentUpdate {
-                                cadence: data.cadence,
-                                power: data.instantaneous_power,
-                            },
-                        )
-                        .unwrap();
+                match message {
+                    fitness_equipment::FitnessEquipmentData::StationaryBike(data) => {
+                        window
+                            .emit(
+                                "fitness_equipment_data",
+                                FitnessEquipmentUpdate {
+                                    cadence: data.cadence,
+                                    power: data.instantaneous_power,
+                                },
+                            )
+                            .unwrap();
+                    }
+                    fitness_equipment::FitnessEquipmentData::CommandStatus(data) => {
+                        s.send(data)
+                            .expect("send to control loop channel should succeed");
+                    }
+                    _ => {}
                 }
             }
         });
-
-        {
-            let mut fe_channel = state.fe_channel.write().unwrap();
-            *fe_channel = Some(channel);
-        }
 
         Ok(())
     } else {
@@ -156,7 +188,9 @@ async fn open_fitness_equipment(
 
 #[tauri::command]
 async fn load_workout(state: State<'_, Arc<AppState>>, data: String) -> Result<Workout, String> {
-    let wko = workout::from_data_url(data)?;
+    let wko = workout::from_data_url(data, 0.)?;
+
+    trace!("load_workout: wko = {:?}", wko);
 
     {
         let mut state_wko = state.workout.lock().unwrap();
@@ -168,93 +202,48 @@ async fn load_workout(state: State<'_, Arc<AppState>>, data: String) -> Result<W
 
 #[tauri::command]
 async fn start_workout(state: State<'_, Arc<AppState>>, window: Window) -> Result<(), String> {
-    let state_wko = state.workout.lock().unwrap();
-
-    let wko = match state_wko.clone() {
-        Some(wko) => wko,
-        None => return Err("no workout loaded".into()),
+    let wko = {
+        let wko = state.workout.lock().unwrap();
+        match wko.clone() {
+            Some(wko) => wko,
+            None => return Err("no workout loaded".into()),
+        }
     };
 
-    let mut step_start = std::time::Instant::now();
-    let mut step_index = 0;
-    {
-        let power: u16 = wko.steps[step_index].set_point.try_into().unwrap();
-
-        debug!(
-            "starting workout at step: {}, need to set power to {}",
-            step_index, power,
-        );
-        let channel = state.fe_channel.read().unwrap();
-
-        if let Some(channel) = *channel {
-            let erg = fitness_equipment::target_power_message(channel, power * 4);
-            let node = state.node.lock().unwrap();
-            if let Some(ref node) = &*node {
-                if let Err(e) = node.write_message(erg, core::time::Duration::from_secs(1)) {
-                    error!("failed to write message: {}", e);
-                }
-            } else {
-                error!("no node");
-            }
-        } else {
-            error!("no channel for fitness equipment");
+    let fe_state = {
+        let fe = state.fe_state.read().unwrap();
+        match *fe {
+            Some(ref fe) => fe.clone(),
+            None => return Err("fitness equipment not connected".into()),
         }
-    }
+    };
 
-    loop {
-        let mut step_elapsed = (step_start.elapsed() * 1).as_secs();
+    let wko_exec = executor::Executor::new(
+        Arc::clone(&state.node),
+        Arc::clone(&state.workout_status),
+        wko,
+        fe_state,
+    );
 
-        let step_changed = if step_elapsed >= Into::<u64>::into(wko.steps[step_index].duration) {
-            if wko.steps.len() > step_index + 1 {
-                step_index += 1;
-                step_start = std::time::Instant::now();
-                step_elapsed = 0;
-            } else {
-                break;
-            }
+    info!("starting workout");
 
-            true
+    let wko_handle = std::thread::spawn(move || wko_exec.execute());
+
+    while !wko_handle.is_finished() {
+        let status = *state.workout_status.lock().unwrap();
+
+        if let Some(status) = status {
+            window
+                .emit("workout_status", status)
+                .map_err(|e| format!("emit workout_status: {}", e))?;
         } else {
-            false
-        };
-
-        if step_changed {
-            let power: u16 = wko.steps[step_index].set_point.try_into().unwrap();
-
-            debug!("new step: {}, need to set power to {}", step_index, power,);
-
-            {
-                let channel = state.fe_channel.read().unwrap();
-
-                if let Some(channel) = *channel {
-                    let erg = fitness_equipment::target_power_message(channel, power * 4);
-                    let node = state.node.lock().unwrap();
-                    if let Some(ref node) = &*node {
-                        if let Err(e) = node.write_message(erg, core::time::Duration::from_secs(1))
-                        {
-                            error!("failed to write message: {}", e);
-                        }
-                    } else {
-                        error!("no node");
-                    }
-                } else {
-                    error!("no channel for fitness equipment");
-                }
-            }
+            debug!("no workout status in UI update loop");
         }
-
-        window
-            .emit(
-                "workout_status",
-                WorkoutStatus {
-                    step_index,
-                    step_elapsed: step_elapsed as u32,
-                },
-            )
-            .map_err(|e| format!("emit workout_status: {}", e))?;
 
         std::thread::sleep(core::time::Duration::from_millis(200));
     }
+
+    info!("workout complete, exiting UI update loop");
 
     Ok(())
 }
@@ -262,7 +251,7 @@ async fn start_workout(state: State<'_, Arc<AppState>>, window: Window) -> Resul
 fn main() {
     env_logger::builder()
         .format_timestamp_millis()
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log::LevelFilter::Trace)
         .filter(Some("tao"), log::LevelFilter::Warn)
         .target(env_logger::Target::Stdout)
         .init();
@@ -273,10 +262,11 @@ fn main() {
 
     let state = Arc::new(AppState {
         config: app_config,
-        node: None.into(),
-        fe_channel: None.into(),
+        node: Arc::new(Mutex::new(None)),
+        fe_state: None.into(),
         hrm_channel: None.into(),
         workout: None.into(),
+        workout_status: Arc::new(Mutex::new(None)),
     });
 
     let mut sleep_lock = nosleep::NoSleep::new().unwrap();

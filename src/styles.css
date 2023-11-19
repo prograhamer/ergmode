@@ -71,12 +71,16 @@ button {
   cursor: pointer;
 }
 
-button:hover {
+button:hover:enabled {
   border-color: #396cd8;
 }
-button:active {
+button:active:enabled {
   border-color: #396cd8;
   background-color: #e8e8e8;
+}
+button:disabled, input:disabled {
+	background-color: #eeeeee;
+	color: #9f9f9f;
 }
 
 input,

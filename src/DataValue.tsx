@@ -40,7 +40,7 @@ function DataValue({
       <div className={classes.value}>
         {icon && <span className={classes.icon}>{icon}</span>}
         {value !== null ? value : "NO DATA"}
-        {value && unit && <span className={classes.unit}>{unit}</span>}
+        {value !== null && unit && <span className={classes.unit}>{unit}</span>}
       </div>
     </div>
   );

@@ -1,15 +1,29 @@
-import { useState, ChangeEvent } from "react";
+import { useEffect, useState, ChangeEvent } from "react";
 
 import { createUseStyles } from "react-jss";
 
 import { invoke } from "@tauri-apps/api/tauri";
+import { listen } from "@tauri-apps/api/event";
+
+import { HiSignal, HiSignalSlash } from "react-icons/hi2";
 
 import WorkoutMain from "./WorkoutMain";
+
+import { TauriEvent } from "./types";
 
 const useStyles = createUseStyles({
   container: {
     width: "100vw",
     height: "100vh",
+  },
+  statusBar: {
+    position: "absolute",
+    bottom: 0,
+    color: "#eeeeee",
+    backgroundColor: "#252525",
+    borderTop: "1px black solid",
+    fontSize: 24,
+    width: "100%",
   },
 });
 
@@ -18,19 +32,26 @@ function App() {
 
   const [error, setError] = useState("");
   const [workout, setWorkout] = useState(null);
+  const [nodeConnected, setNodeConnected] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
 
-  const setup = async () => {
-    try {
-      setError("");
-      await invoke("open_node");
-      await invoke("open_hrm");
-      await invoke("open_fitness_equipment");
-    } catch (error) {
-      if (typeof error === "string") {
-        setError(error);
+  useEffect(() => {
+    const cleanup = listen("node_connected", (event: TauriEvent<boolean>) => {
+      setNodeConnected(event.payload);
+    });
+
+    return () => {
+      cleanup.then((f) => f());
+    };
+  }, []);
+
+  useEffect(() => {
+    invoke("open_node").catch((e) => {
+      if (typeof e === "string") {
+        setError(e);
       }
-    }
-  };
+    });
+  }, []);
 
   const loadWorkout = async (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length === 1) {
@@ -52,17 +73,42 @@ function App() {
     }
   };
 
+  const openDevices = async () => {
+    try {
+      await invoke("open_hrm");
+      await invoke("open_fitness_equipment");
+      setDevicesOpen(true);
+    } catch (error) {
+      if (typeof error === "string") {
+        setError(error);
+      }
+    }
+  };
+
   return (
     <div className={classes.container}>
       {error != "" && <p>Error message: {error}</p>}
       {workout === null ? (
         <>
-          <button onClick={setup}>SET IT UP</button>
-          <input type="file" accept=".fit" onChange={loadWorkout} />
+          <button
+            disabled={devicesOpen || !nodeConnected}
+            onClick={openDevices}
+          >
+            Open Devices
+          </button>
+          <input
+            disabled={!devicesOpen}
+            type="file"
+            accept=".fit"
+            onChange={loadWorkout}
+          />
         </>
       ) : (
         <WorkoutMain workout={workout} />
       )}
+      <div className={classes.statusBar}>
+        {nodeConnected ? <HiSignal /> : <HiSignalSlash />}
+      </div>
     </div>
   );
 }

@@ -65,7 +65,7 @@ dependencies = [
 [[package]]
 name = "antrs"
 version = "0.1.0"
-source = "git+https://github.com/prograhamer/antrs#e08bd00607c51454db8e2edbdbe44c278d854c90"
+source = "git+https://github.com/prograhamer/antrs#66a1f3e14b351f7e048fbc0efc66eedf89a5e9ce"
 dependencies = [
  "bitflags 2.4.1",
  "crossbeam-channel",
@@ -701,6 +701,7 @@ version = "0.0.0"
 dependencies = [
  "antrs",
  "base64 0.21.5",
+ "crossbeam-channel",
  "env_logger",
  "fit_file",
  "hex",
@@ -765,7 +766,7 @@ dependencies = [
 [[package]]
 name = "fit_file"
 version = "0.5.0"
-source = "git+https://github.com/prograhamer/rust_fit_file?branch=workout-file-support#cf81e862f31cf5aa1e28fb169a53f9b1ee7e6705"
+source = "git+https://github.com/prograhamer/rust_fit_file?branch=workout-file-support#8cb98a0e8aaf7b45cd5b536a30def525916a70aa"
 dependencies = [
  "csv",
 ]

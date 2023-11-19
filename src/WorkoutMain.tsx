@@ -21,10 +21,10 @@ const useStyles = createUseStyles({
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    height: "100%",
+    height: "calc(100% - 32px)",
   },
   dataFields: {
-    margin: [16, 48],
+    margin: 16,
   },
   row: {
     display: "flex",

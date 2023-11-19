@@ -23,6 +23,7 @@ pub struct WorkoutStep {
 }
 
 struct WorkoutConstructor {
+    set_point_offset: f64,
     workout: Option<Workout>,
     error: Option<String>,
     steps: Vec<WorkoutStep>,
@@ -130,8 +131,14 @@ fn fit_message_callback(
 
                 if let Some(duration) = step.duration_value {
                     let duration = duration / 1000;
+
+                    let half_range = (target_power.1 - target_power.0) as f64 / 2.0;
+                    let mid_point = (target_power.0 + target_power.1) as f64 / 2.0;
+
+                    let set_point = mid_point + (data.set_point_offset * half_range);
+
                     let workout_step = WorkoutStep {
-                        set_point: ((target_power.0 + target_power.1) / 2),
+                        set_point: set_point.round() as u32,
                         target_cadence,
                         target_power,
                         duration,
@@ -220,7 +227,7 @@ fn target_from_fields(
     }
 }
 
-pub fn from_data_url(url: String) -> Result<Workout, String> {
+pub fn from_data_url(url: String, set_point_offset: f64) -> Result<Workout, String> {
     let url = Url::parse(&url).map_err(|e| format!("parse URL: {}", e))?;
 
     if url.scheme() != "data"
@@ -241,11 +248,12 @@ pub fn from_data_url(url: String) -> Result<Workout, String> {
         .decode(parts[1])
         .map_err(|e| format!("decode base64: {}", e))?;
 
-    load_workout(&*data)
+    load_workout(&*data, set_point_offset)
 }
 
-pub fn load_workout(data: impl std::io::Read) -> Result<Workout, String> {
+pub fn load_workout(data: impl std::io::Read, set_point_offset: f64) -> Result<Workout, String> {
     let mut constructor = WorkoutConstructor {
+        set_point_offset,
         workout: None,
         error: None,
         steps: Vec::new(),
@@ -279,7 +287,7 @@ mod test {
     fn it_loads_workout_with_power_and_cadence_targets() {
         let file = File::open("./tests/fixtures/power_and_cadence.fit").expect("file loads");
         let mut reader = BufReader::new(file);
-        let wko = workout::load_workout(&mut reader).expect("workout loads");
+        let wko = workout::load_workout(&mut reader, 0.0).expect("workout loads");
 
         assert_eq!(
             wko,
@@ -288,55 +296,55 @@ mod test {
                 steps: vec![
                     WorkoutStep {
                         duration: 480,
-                        set_point: 112,
+                        set_point: 113,
                         target_cadence: None,
                         target_power: (100, 125),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((85, 95)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((95, 105)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((105, 115)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((115, 125)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((105, 115)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((95, 105)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 60,
-                        set_point: 137,
+                        set_point: 138,
                         target_cadence: Some((85, 95)),
                         target_power: (125, 150),
                     },
                     WorkoutStep {
                         duration: 300,
-                        set_point: 112,
+                        set_point: 113,
                         target_cadence: None,
                         target_power: (100, 125),
                     },
@@ -389,7 +397,7 @@ mod test {
                         duration: 120
                     },
                     WorkoutStep {
-                        set_point: 112,
+                        set_point: 113,
                         target_power: (100, 125),
                         target_cadence: None,
                         duration: 600
